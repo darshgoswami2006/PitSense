@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Datasets and heavy media
+BharatPotHole/
+*.mp4
+
+# ML Framework outputs and model weights
+runs/
+*.pt
