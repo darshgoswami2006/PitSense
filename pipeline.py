@@ -5,21 +5,23 @@ from ultralytics import YOLO
 from depth import load_depth_model, estimate_depth, get_depth_score
 
 # ── Configuration ────────────────────────────────────────────
-YOLO_MODEL_PATH = r"C:\Projects\runs\pothole_v1-5\weights\best.pt"
+YOLO_MODEL_PATH = r"C:\Projects\PitSense\runs\pothole_v1-5\weights\best.pt"
 CONFIDENCE_THRESHOLD = 0.35
 
 # Severity thresholds
-DEPTH_HIGH     = 0.3
-DEPTH_MEDIUM   = 0.15
-AREA_HIGH      = 0.04
-AREA_MEDIUM    = 0.015
+DEPTH_HIGH   = 0.3
+DEPTH_MEDIUM = 0.15
+AREA_HIGH    = 0.04
+AREA_MEDIUM  = 0.015
 
 # Speed advisory
 ADVISORY = {
-    "HIGH":   {"slow": True,  "speed": 10,  "color": (0, 0, 255),   "msg": "SLOW DOWN to 10 km/h"},
-    "MEDIUM": {"slow": True,  "speed": 30,  "color": (0, 165, 255), "msg": "Reduce speed to 30 km/h"},
-    "LOW":    {"slow": False, "speed": None, "color": (0, 255, 0),  "msg": "Safe to proceed"},
+    "HIGH":   {"slow": True,  "speed": 10,  "color": (0, 0, 255),   "msg": "!! SLOW DOWN to 10 km/h"},
+    "MEDIUM": {"slow": True,  "speed": 30,  "color": (0, 165, 255), "msg": ">> Reduce speed to 30 km/h"},
+    "LOW":    {"slow": False, "speed": None, "color": (0, 200, 0),  "msg": "OK  Safe to proceed"},
 }
+
+SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
 # ── Severity Classifier ───────────────────────────────────────
 def classify_severity(depth_score, bbox, frame_shape):
@@ -34,45 +36,91 @@ def classify_severity(depth_score, bbox, frame_shape):
     else:
         return "LOW"
 
-# ── Annotate Frame ────────────────────────────────────────────
-def annotate_frame(frame, detections, depth_map):
-    overall_severity = "LOW"
-    severity_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+# ── Draw rounded rectangle (for cleaner labels) ──────────────
+def draw_label_bg(frame, text, origin, font, scale, thickness, bg_color, padding=5):
+    (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
+    x, y = origin
+    cv2.rectangle(frame,
+                  (x - padding, y - th - padding),
+                  (x + tw + padding, y + baseline + padding),
+                  bg_color, -1)
+    cv2.putText(frame, text, (x, y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
+# ── Annotate Frame ────────────────────────────────────────────
+def annotate_frame(frame, detections, frame_count, fps):
+    h, w = frame.shape[:2]
+    overall_severity = "LOW"
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # ── Per-detection annotations ─────────────────────────────
     for det in detections:
-        bbox = det["bbox"]
-        conf = det["conf"]
-        severity = det["severity"]
-        advisory = ADVISORY[severity]
+        bbox       = det["bbox"]
+        conf       = det["conf"]
+        severity   = det["severity"]
+        depth_score = det["depth_score"]
+        color      = ADVISORY[severity]["color"]
 
         x1, y1, x2, y2 = [int(v) for v in bbox]
-        color = advisory["color"]
 
-        # Draw bounding box
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        # Bounding box — thicker for HIGH severity
+        thickness = 3 if severity == "HIGH" else 2
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
 
-        # Label with severity and confidence
-        label = f"Pothole [{severity}] {conf:.2f}"
-        (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
-        cv2.rectangle(frame, (x1, y1 - lh - 8), (x1 + lw, y1), color, -1)
-        cv2.putText(frame, label, (x1, y1 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+        # Top label: severity + confidence
+        top_label = f"Pothole [{severity}]  {conf:.2f}"
+        draw_label_bg(frame, top_label, (x1, y1 - 6), font, 0.52, 1, color)
+
+        # Bottom label: depth score
+        depth_label = f"Depth score: {depth_score:.3f}"
+        (dw, dh), _ = cv2.getTextSize(depth_label, font, 0.45, 1)
+        cv2.rectangle(frame, (x1, y2), (x1 + dw + 8, y2 + dh + 8), (30, 30, 30), -1)
+        cv2.putText(frame, depth_label, (x1 + 4, y2 + dh + 2),
+                    font, 0.45, color, 1, cv2.LINE_AA)
 
         # Track worst severity
-        if severity_rank[severity] > severity_rank[overall_severity]:
+        if SEVERITY_RANK[severity] > SEVERITY_RANK[overall_severity]:
             overall_severity = severity
 
-    # Overall advisory banner at top
-    adv = ADVISORY[overall_severity]
+    # ── Top banner (speed advisory) ───────────────────────────
+    adv          = ADVISORY[overall_severity]
     banner_color = adv["color"]
-    cv2.rectangle(frame, (0, 0), (frame.shape[1], 50), banner_color, -1)
-    cv2.putText(frame, adv["msg"], (10, 35),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+    banner_h     = 58
 
-    # Pothole count
-    count_text = f"Potholes detected: {len(detections)}"
-    cv2.putText(frame, count_text, (frame.shape[1] - 280, 35),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    # Semi-transparent overlay
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (w, banner_h), banner_color, -1)
+    cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+
+    # Advisory text — left side
+    cv2.putText(frame, adv["msg"], (14, 36),
+            font, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
+
+    # ── Bottom bar ────────────────────────────────────────────
+    bar_h = 44
+    overlay2 = frame.copy()
+    cv2.rectangle(overlay2, (0, h - bar_h), (w, h), (20, 20, 20), -1)
+    cv2.addWeighted(overlay2, 0.8, frame, 0.2, 0, frame)
+
+    # Divider line
+    cv2.line(frame, (0, h - bar_h), (w, h - bar_h), (80, 80, 80), 1)
+
+    # Left: pothole count
+    count_text = f"Potholes: {len(detections)}"
+    cv2.putText(frame, count_text, (14, h - 14),
+                font, 0.62, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # Centre: overall severity badge
+    sev_text  = f"Severity: {overall_severity}"
+    sev_color = ADVISORY[overall_severity]["color"]
+    (sew, _), _ = cv2.getTextSize(sev_text, font, 0.62, 1)
+    cv2.putText(frame, sev_text, (w // 2 - sew // 2, h - 14),
+                font, 0.62, sev_color, 1, cv2.LINE_AA)
+
+    # Right: frame / timestamp
+    timestamp = f"Frame: {frame_count}  |  {fps:.1f} FPS"
+    (tw, _), _ = cv2.getTextSize(timestamp, font, 0.52, 1)
+    cv2.putText(frame, timestamp, (w - tw - 14, h - 14),
+                font, 0.52, (180, 180, 180), 1, cv2.LINE_AA)
 
     return frame
 
@@ -89,18 +137,18 @@ def run_pipeline(source):
         print(f"Error: Cannot open source: {source}")
         return
 
-    # Output video writer
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    vid_w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    vid_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    vid_fps = cap.get(cv2.CAP_PROP_FPS) or 30
+
     out = cv2.VideoWriter(
-        r"C:\Projects\output.mp4",
+        r"C:\Projects\PitSense\output.mp4",
         cv2.VideoWriter_fourcc(*"mp4v"),
-        fps, (w, h)
+        vid_fps, (vid_w, vid_h)
     )
 
     frame_count = 0
-    print("Processing video...")
+    print("Processing video...\n")
 
     while True:
         ret, frame = cap.read()
@@ -110,30 +158,28 @@ def run_pipeline(source):
         frame_count += 1
 
         # Run YOLO detection
-        results = yolo(frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
+        results    = yolo(frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
         detections = []
 
         if results.boxes is not None and len(results.boxes):
-            # Only run depth estimation if potholes detected (saves time)
             depth_map = estimate_depth(frame, depth_model, depth_transform)
 
             for box in results.boxes:
-                bbox = box.xyxy[0].cpu().numpy()
-                conf = float(box.conf[0])
+                bbox        = box.xyxy[0].cpu().numpy()
+                conf        = float(box.conf[0])
                 depth_score = get_depth_score(depth_map, bbox, frame.shape)
-                severity = classify_severity(depth_score, bbox, frame.shape)
+                severity    = classify_severity(depth_score, bbox, frame.shape)
 
                 detections.append({
-                    "bbox": bbox,
-                    "conf": conf,
+                    "bbox":        bbox,
+                    "conf":        conf,
                     "depth_score": depth_score,
-                    "severity": severity
+                    "severity":    severity,
                 })
         else:
             depth_map = None
 
-        # Annotate and write frame
-        annotated = annotate_frame(frame, detections, depth_map)
+        annotated = annotate_frame(frame, detections, frame_count, vid_fps)
         out.write(annotated)
 
         if frame_count % 30 == 0:
@@ -141,10 +187,9 @@ def run_pipeline(source):
 
     cap.release()
     out.release()
-    print(f"\nDone! Output saved to C:\\Projects\\output.mp4")
+    print(f"\nDone! Output saved to C:\\Projects\\PitSense\\output.mp4")
     print(f"Total frames processed: {frame_count}")
 
 if __name__ == '__main__':
-    # Change this to your video file path
-    VIDEO_PATH = r"C:\Projects\test_video.mp4"
+    VIDEO_PATH = r"C:\Projects\PitSense\test_video.mp4"
     run_pipeline(VIDEO_PATH)

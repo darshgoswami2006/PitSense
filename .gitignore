@@ -1,11 +1,31 @@
-# Python cache
+# Python bytecode and cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
 
-# Datasets and heavy media
+# Project-specific local datasets
 BharatPotHole/
-*.mp4
 
-# ML Framework outputs and model weights
+# Deep learning framework checkpoints and logs
 runs/
+outputs/
 *.pt
+*.pth
+*.onnx
+
+# Media files (videos and images)
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.jpg
+*.jpeg
+*.png
+
+# IDEs and system files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
