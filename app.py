@@ -224,7 +224,7 @@ class PitSenseApp:
         tk.Label(hdr, text="PitSense", font=("Helvetica", 20, "bold"),
                  bg=acc, fg="white").pack(side="left", padx=18, pady=10)
         tk.Label(hdr, text="Pothole Detection & Speed Advisory",
-                 font=("Helvetica", 10), bg=acc, fg="#ffcdd2").pack(
+                 font=("Helvetica", 10), bg=acc, fg="white").pack(
                  side="left", pady=10)
 
         # ── Drop zone ─────────────────────────────────────────
