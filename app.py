@@ -2,10 +2,8 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 import threading
 import os
-import sys
 from datetime import datetime
 
-# ── Try importing heavy deps, show friendly error if missing ──
 try:
     import cv2
     import torch
@@ -17,7 +15,7 @@ except ImportError as e:
     DEPS_ERROR = str(e)
 
 # ── Configuration ─────────────────────────────────────────────
-YOLO_MODEL_PATH = r"C:\Projects\PitSense\runs\pothole_v1-5\weights\best.pt"
+YOLO_MODEL_PATH = r"C:\Projects\PitSense\runs\pothole_v2\weights\best.pt"
 OUTPUT_DIR      = r"C:\Projects\PitSense\outputs"
 CONFIDENCE      = 0.35
 
@@ -78,7 +76,6 @@ def annotate_frame(frame, detections, frame_count, fps):
         if SEVERITY_RANK[sev] > SEVERITY_RANK[overall]:
             overall = sev
 
-    # Top banner
     adv = ADVISORY[overall]
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (w, 52), adv["color"], -1)
@@ -86,7 +83,6 @@ def annotate_frame(frame, detections, frame_count, fps):
     cv2.putText(frame, adv["msg"], (14, 36),
                 font, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
 
-    # Bottom bar
     overlay2 = frame.copy()
     cv2.rectangle(overlay2, (0, h - 44), (w, h), (20, 20, 20), -1)
     cv2.addWeighted(overlay2, 0.8, frame, 0.2, 0, frame)
@@ -129,7 +125,6 @@ def run_pipeline(video_path, log_fn, progress_fn, done_fn):
         vid_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         vid_fps = cap.get(cv2.CAP_PROP_FPS) or 30
 
-        # Timestamped output filename
         base      = os.path.splitext(os.path.basename(video_path))[0]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_name  = f"{base}_pitsense_{timestamp}.mp4"
@@ -139,13 +134,13 @@ def run_pipeline(video_path, log_fn, progress_fn, done_fn):
                               cv2.VideoWriter_fourcc(*"mp4v"),
                               vid_fps, (vid_w, vid_h))
 
-        log_fn(f"Processing: {os.path.basename(video_path)}")
-        log_fn(f"Resolution: {vid_w}x{vid_h}  |  FPS: {vid_fps:.1f}  |  Frames: {total}")
-        log_fn(f"Output: {out_name}")
-        log_fn("─" * 50)
+        log_fn(f"Processing : {os.path.basename(video_path)}")
+        log_fn(f"Resolution : {vid_w}x{vid_h}  |  FPS: {vid_fps:.1f}  |  Frames: {total}")
+        log_fn(f"Output     : {out_name}")
+        log_fn("─" * 52)
 
-        frame_count   = 0
-        total_potholes = 0
+        frame_count     = 0
+        total_potholes  = 0
         severity_counts = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
 
         while True:
@@ -182,9 +177,9 @@ def run_pipeline(video_path, log_fn, progress_fn, done_fn):
         cap.release()
         out.release()
 
-        log_fn("─" * 50)
+        log_fn("─" * 52)
         log_fn(f"Done!  {frame_count} frames processed.")
-        log_fn(f"Total pothole detections : {total_potholes}")
+        log_fn(f"Total detections : {total_potholes}")
         log_fn(f"  LOW    : {severity_counts['LOW']}")
         log_fn(f"  MEDIUM : {severity_counts['MEDIUM']}")
         log_fn(f"  HIGH   : {severity_counts['HIGH']}")
@@ -198,13 +193,12 @@ def run_pipeline(video_path, log_fn, progress_fn, done_fn):
 # ── GUI ───────────────────────────────────────────────────────
 class PitSenseApp:
     def __init__(self, root):
-        self.root  = root
+        self.root       = root
+        self.video_path = None
         self.root.title("PitSense — Pothole Detection System")
-        self.root.geometry("700x600")
+        self.root.geometry("700x700")
         self.root.resizable(False, False)
         self.root.configure(bg="#0f1117")
-
-        self.video_path = None
         self._build_ui()
 
         if not DEPS_OK:
@@ -215,28 +209,27 @@ class PitSenseApp:
         bg   = "#0f1117"
         card = "#1a1d27"
         acc  = "#e63946"
-        txt  = "#f1faee"
         sub  = "#8d99ae"
 
-        # ── Header ────────────────────────────────────────────
+        # Header
         hdr = tk.Frame(self.root, bg=acc, height=56)
         hdr.pack(fill="x")
+        hdr.pack_propagate(False)
         tk.Label(hdr, text="PitSense", font=("Helvetica", 20, "bold"),
                  bg=acc, fg="white").pack(side="left", padx=18, pady=10)
         tk.Label(hdr, text="Pothole Detection & Speed Advisory",
-                 font=("Helvetica", 10), bg=acc, fg="white").pack(
+                 font=("Helvetica", 10), bg=acc, fg="#ffcdd2").pack(
                  side="left", pady=10)
 
-        # ── Drop zone ─────────────────────────────────────────
-        drop = tk.Frame(self.root, bg=card, bd=0, highlightthickness=2,
+        # File picker
+        drop = tk.Frame(self.root, bg=card, highlightthickness=2,
                         highlightbackground="#2d3250")
-        drop.pack(fill="x", padx=20, pady=(18, 0))
-
-        self.file_label = tk.Label(
-            drop, text="No video selected",
-            font=("Helvetica", 10), bg=card, fg=sub, anchor="w")
-        self.file_label.pack(side="left", padx=14, pady=12, fill="x", expand=True)
-
+        drop.pack(fill="x", padx=20, pady=(16, 0))
+        self.file_label = tk.Label(drop, text="No video selected",
+                                   font=("Helvetica", 10), bg=card,
+                                   fg=sub, anchor="w")
+        self.file_label.pack(side="left", padx=14, pady=12,
+                             fill="x", expand=True)
         tk.Button(drop, text="Browse Video",
                   font=("Helvetica", 10, "bold"),
                   bg=acc, fg="white", relief="flat",
@@ -244,62 +237,58 @@ class PitSenseApp:
                   activebackground="#c1121f", activeforeground="white",
                   command=self.browse).pack(side="right", padx=10, pady=8)
 
-        # ── Progress bar ──────────────────────────────────────
-        prog_frame = tk.Frame(self.root, bg=bg)
-        prog_frame.pack(fill="x", padx=20, pady=(12, 0))
-
-        tk.Label(prog_frame, text="Progress", font=("Helvetica", 9),
+        # Progress
+        pf = tk.Frame(self.root, bg=bg)
+        pf.pack(fill="x", padx=20, pady=(12, 0))
+        tk.Label(pf, text="Progress", font=("Helvetica", 9),
                  bg=bg, fg=sub).pack(anchor="w")
-
         style = ttk.Style()
         style.theme_use("default")
         style.configure("Red.Horizontal.TProgressbar",
                         troughcolor=card, background=acc,
                         thickness=14, bordercolor=card)
-
-        self.progress = ttk.Progressbar(prog_frame, style="Red.Horizontal.TProgressbar",
-                                        orient="horizontal", length=660, mode="determinate")
+        self.progress = ttk.Progressbar(pf,
+                                        style="Red.Horizontal.TProgressbar",
+                                        orient="horizontal",
+                                        length=660, mode="determinate")
         self.progress.pack(fill="x", pady=(4, 0))
-
-        self.pct_label = tk.Label(prog_frame, text="0%",
+        self.pct_label = tk.Label(pf, text="0%",
                                   font=("Helvetica", 9), bg=bg, fg=sub)
         self.pct_label.pack(anchor="e")
 
-        # ── Run button ────────────────────────────────────────
+        # Buttons row — Run + Open Output Folder side by side
+        btn_row = tk.Frame(self.root, bg=bg)
+        btn_row.pack(pady=(14, 0))
+
         self.run_btn = tk.Button(
-            self.root, text="Run PitSense",
+            btn_row, text="Run PitSense",
             font=("Helvetica", 12, "bold"),
             bg=acc, fg="white", relief="flat",
             padx=20, pady=10, cursor="hand2",
             activebackground="#c1121f", activeforeground="white",
             state="disabled", command=self.start_processing)
-        self.run_btn.pack(pady=(14, 0))
+        self.run_btn.pack(side="left", padx=(0, 14))
 
-        # ── Log area ──────────────────────────────────────────
-        log_frame = tk.Frame(self.root, bg=bg)
-        log_frame.pack(fill="both", expand=True, padx=20, pady=(14, 0))
+        self.open_btn = tk.Button(
+            btn_row, text="Open Output Folder",
+            font=("Helvetica", 11),
+            bg="#457b9d", fg="white", relief="flat",
+            padx=16, pady=10, cursor="hand2",
+            activebackground="#1d6c8a", activeforeground="white",
+            command=self.open_output_folder)
+        self.open_btn.pack(side="left")
 
-        tk.Label(log_frame, text="Processing Log",
-                 font=("Helvetica", 9), bg=bg, fg=sub).pack(anchor="w")
-
-        self.log_box = tk.Text(
-            log_frame, bg=card, fg="#a8dadc",
-            font=("Courier", 9), relief="flat",
-            state="disabled", wrap="word",
-            insertbackground="white")
+        # Processing log
+        lf = tk.Frame(self.root, bg=bg)
+        lf.pack(fill="both", expand=True, padx=20, pady=(14, 0))
+        tk.Label(lf, text="Processing Log", font=("Helvetica", 9),
+                 bg=bg, fg=sub).pack(anchor="w")
+        self.log_box = tk.Text(lf, bg=card, fg="#a8dadc",
+                               font=("Courier", 9), relief="flat",
+                               state="disabled", wrap="word")
         self.log_box.pack(fill="both", expand=True, pady=(4, 0))
 
-        scrollbar = tk.Scrollbar(self.log_box)
-        self.log_box.configure(yscrollcommand=scrollbar.set)
-
-        # ── Output button (hidden until done) ─────────────────
-        self.open_btn = tk.Button(
-            self.root, text="Open Output Folder",
-            font=("Helvetica", 10), bg="#457b9d", fg="white",
-            relief="flat", padx=14, pady=7, cursor="hand2",
-            command=self.open_output_folder)
-
-        # ── Footer ────────────────────────────────────────────
+        # Footer
         tk.Label(self.root, text="PitSense  •  Internship Project",
                  font=("Helvetica", 8), bg=bg, fg="#3d405b").pack(pady=(6, 8))
 
@@ -312,10 +301,9 @@ class PitSenseApp:
             self.video_path = path
             name = os.path.basename(path)
             size = os.path.getsize(path) / (1024 * 1024)
-            self.file_label.config(
-                text=f"{name}   ({size:.1f} MB)", fg="#f1faee")
+            self.file_label.config(text=f"{name}   ({size:.1f} MB)",
+                                   fg="#f1faee")
             self.run_btn.config(state="normal")
-            self.open_btn.pack_forget()
             self.log(f"Selected: {path}")
 
     def log(self, msg):
@@ -334,7 +322,6 @@ class PitSenseApp:
             return
         self.run_btn.config(state="disabled", text="Processing...")
         self.progress["value"] = 0
-        self.open_btn.pack_forget()
 
         def worker():
             run_pipeline(
@@ -350,8 +337,7 @@ class PitSenseApp:
         self.run_btn.config(state="normal", text="Run PitSense")
         if out_path:
             self.set_progress(100)
-            self.open_btn.pack(pady=(8, 0))
-            self.log(f"\nOutput ready — click 'Open Output Folder' to view.")
+            self.log("\nOutput ready — click 'Open Output Folder' to view.")
         else:
             self.log("Processing failed. Check the log above.")
 
