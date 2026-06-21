@@ -1,31 +1,22 @@
-# Python bytecode and cache
+# Python
+pothole_env/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.pytest_cache/
 
-# Project-specific local datasets
-BharatPotHole/
-
-# Deep learning framework checkpoints and logs
-runs/
-outputs/
+# Model weights (too large for GitHub)
 *.pt
-*.pth
-*.onnx
 
-# Media files (videos and images)
+# Videos
 *.mp4
 *.avi
-*.mkv
 *.mov
-*.jpg
-*.jpeg
-*.png
+*.mkv
 
-# IDEs and system files
-.vscode/
-.idea/
-Thumbs.db
-Desktop.ini
+# Dataset
+BharatPotHole/
+
+# Outputs
+outputs/
+
+# Cache
+.cache/
