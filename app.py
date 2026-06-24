@@ -14,7 +14,7 @@ except ImportError as e:
     DEPS_OK = False
     DEPS_ERROR = str(e)
 
-# ── Configuration ─────────────────────────────────────────────
+#  Configuration 
 YOLO_MODEL_PATH = r"C:\Projects\PitSense\runs\pothole_v2\weights\best.pt"
 OUTPUT_DIR      = r"C:\Projects\PitSense\outputs"
 CONFIDENCE      = 0.35
@@ -31,7 +31,7 @@ ADVISORY = {
 }
 SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
-# ── Pipeline logic ────────────────────────────────────────────
+# Pipeline logic 
 def classify_severity(depth_score, bbox, frame_shape):
     h, w = frame_shape[:2]
     x1, y1, x2, y2 = bbox
@@ -190,7 +190,7 @@ def run_pipeline(video_path, log_fn, progress_fn, done_fn):
         log_fn(f"ERROR: {e}")
         done_fn(None)
 
-# ── GUI ───────────────────────────────────────────────────────
+#  GUI 
 class PitSenseApp:
     def __init__(self, root):
         self.root       = root

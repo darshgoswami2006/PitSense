@@ -23,7 +23,7 @@ ADVISORY = {
 
 SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
-# ── Severity Classifier ───────────────────────────────────────
+#  Severity Classifier 
 def classify_severity(depth_score, bbox, frame_shape):
     h, w = frame_shape[:2]
     x1, y1, x2, y2 = bbox
@@ -36,7 +36,7 @@ def classify_severity(depth_score, bbox, frame_shape):
     else:
         return "LOW"
 
-# ── Draw rounded rectangle (for cleaner labels) ──────────────
+#  Draw rounded rectangle 
 def draw_label_bg(frame, text, origin, font, scale, thickness, bg_color, padding=5):
     (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
     x, y = origin
@@ -46,13 +46,13 @@ def draw_label_bg(frame, text, origin, font, scale, thickness, bg_color, padding
                   bg_color, -1)
     cv2.putText(frame, text, (x, y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
-# ── Annotate Frame ────────────────────────────────────────────
+#  Annotate Frame
 def annotate_frame(frame, detections, frame_count, fps):
     h, w = frame.shape[:2]
     overall_severity = "LOW"
     font = cv2.FONT_HERSHEY_SIMPLEX
 
-    # ── Per-detection annotations ─────────────────────────────
+    # Per-detection annotations 
     for det in detections:
         bbox       = det["bbox"]
         conf       = det["conf"]
@@ -81,7 +81,7 @@ def annotate_frame(frame, detections, frame_count, fps):
         if SEVERITY_RANK[severity] > SEVERITY_RANK[overall_severity]:
             overall_severity = severity
 
-    # ── Top banner (speed advisory) ───────────────────────────
+    #  Top banner (speed advisory) 
     adv          = ADVISORY[overall_severity]
     banner_color = adv["color"]
     banner_h     = 58
@@ -95,7 +95,7 @@ def annotate_frame(frame, detections, frame_count, fps):
     cv2.putText(frame, adv["msg"], (14, 36),
             font, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
 
-    # ── Bottom bar ────────────────────────────────────────────
+    #  Bottom bar 
     bar_h = 44
     overlay2 = frame.copy()
     cv2.rectangle(overlay2, (0, h - bar_h), (w, h), (20, 20, 20), -1)
@@ -124,7 +124,7 @@ def annotate_frame(frame, detections, frame_count, fps):
 
     return frame
 
-# ── Main Pipeline ─────────────────────────────────────────────
+#  Main Pipeline 
 def run_pipeline(source):
     print("Loading YOLO model...")
     yolo = YOLO(YOLO_MODEL_PATH)

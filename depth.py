@@ -28,7 +28,6 @@ def get_depth_score(depth_map, bbox, frame_shape):
         return 0.0
 
     # Normalize depth score 0-1
-    # Higher value = deeper pothole relative to surroundings
     road_depth = np.mean(depth_map)
     pothole_depth = np.mean(region)
     score = abs(pothole_depth - road_depth) / (road_depth + 1e-6)
