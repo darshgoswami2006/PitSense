@@ -11,12 +11,19 @@ __pycache__/
 *.avi
 *.mov
 *.mkv
+*.webm
 
 # Dataset
 BharatPotHole/
+archive/
+merged_dataset/train/
+merged_dataset/valid/
+merged_dataset/test/
 
 # Outputs
 outputs/
 
 # Cache
 .cache/
+
+runs/

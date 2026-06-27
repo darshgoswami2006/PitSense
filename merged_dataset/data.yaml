@@ -1,0 +1,10 @@
+# PitSense Merged Dataset
+# BharatPothole (Indian dashcam) + Roboflow Public Pothole (VOC)
+
+path: C:/Projects/PitSense/merged_dataset
+train: train/images
+val:   valid/images
+test:  test/images
+
+nc: 1
+names: ['pothole']

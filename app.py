@@ -3,9 +3,11 @@ from tkinter import filedialog, ttk
 import threading
 import os
 from datetime import datetime
+from collections import deque
 
 try:
     import cv2
+    import numpy as np
     import torch
     from ultralytics import YOLO
     from depth import load_depth_model, estimate_depth, get_depth_score
@@ -15,23 +17,107 @@ except ImportError as e:
     DEPS_ERROR = str(e)
 
 #  Configuration 
-YOLO_MODEL_PATH = r"C:\Projects\PitSense\runs\pothole_v2\weights\best.pt"
+YOLO_MODEL_PATH = r"C:\Projects\PitSense\runs\pothole_v3\weights\best.pt"
 OUTPUT_DIR      = r"C:\Projects\PitSense\outputs"
-CONFIDENCE      = 0.35
+CONFIDENCE      = 0.25
 
 DEPTH_HIGH   = 0.3
 DEPTH_MEDIUM = 0.15
 AREA_HIGH    = 0.04
 AREA_MEDIUM  = 0.015
 
-ADVISORY = {
-    "HIGH":   {"speed": 10,  "color": (0, 0, 255),   "msg": "!! SLOW DOWN to 10 km/h"},
-    "MEDIUM": {"speed": 30,  "color": (0, 165, 255), "msg": ">> Reduce speed to 30 km/h"},
-    "LOW":    {"speed": None, "color": (0, 200, 0),  "msg": "OK  Safe to proceed"},
+# Severity colours (BGR)
+SEV_COLOR = {
+    "HIGH":   (0, 0, 255),
+    "MEDIUM": (0, 165, 255),
+    "LOW":    (0, 200, 0),
 }
 SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
-# Pipeline logic 
+# ByteTrack smoothing
+SMOOTH_WINDOW = 10
+
+#  Speed estimation thresholds 
+# Optical-flow magnitude bands (tuned for 640-wide dashcam @ 30 fps)
+FLOW_FAST     = 3.5   # px/frame  → FAST
+FLOW_MODERATE = 1.5   # px/frame  → MODERATE  (below → SLOW)
+
+SPEED_BAND_COLOR = {
+    "FAST":     (0, 0, 220),
+    "MODERATE": (0, 140, 255),
+    "SLOW":     (0, 200, 80),
+}
+
+# Base recommended speed (km/h) per severity
+BASE_SPEED = {"LOW": 40, "MEDIUM": 25, "HIGH": 10}
+
+# How aggressively each speed band adjusts the recommendation
+SPEED_MULTIPLIER = {"FAST": 0.70, "MODERATE": 0.90, "SLOW": 1.10}
+
+# ── Dynamic speed recommendation ─────────────────────────────
+def recommended_speed(severity, speed_band, depth_score):
+    """Return a rounded km/h recommendation, or None if safe to proceed."""
+    if severity == "LOW" and speed_band == "SLOW":
+        return None                          # genuinely safe, no action needed
+
+    base       = BASE_SPEED[severity]
+    multiplier = SPEED_MULTIPLIER[speed_band]
+    depth_pen  = 1.0 - (depth_score * 0.3)  # deeper → slower
+    raw        = base * multiplier * depth_pen
+    return max(5, round(raw / 5) * 5)        # round to nearest 5, floor at 5
+
+def advisory_message(severity, speed_band, rec_speed):
+    """Build the banner text."""
+    if rec_speed is None:
+        return "OK  Safe to proceed"
+    verb = "Slow immediately to" if speed_band == "FAST" and severity == "HIGH" \
+           else "Reduce speed to"
+    return f"!! {verb} {rec_speed} km/h"
+
+def advisory_color(severity, speed_band):
+    if severity == "HIGH":
+        return (0, 0, 255)
+    if severity == "MEDIUM":
+        return (0, 140, 255) if speed_band == "FAST" else (0, 165, 255)
+    return (0, 200, 0)
+
+#  Optical-flow speed estimator
+class SpeedEstimator:
+    """Estimates vehicle speed band from frame-to-frame optical flow."""
+    def __init__(self, history=15):
+        self.prev_gray   = None
+        self.mag_history = deque(maxlen=history)
+
+    def update(self, frame):
+        import cv2, numpy as np
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Use only the sky-free bottom 55 % of the frame for flow
+        h = gray.shape[0]
+        roi_curr = gray[int(h * 0.45):]
+        band = "SLOW"
+
+        if self.prev_gray is not None:
+            roi_prev = self.prev_gray[int(h * 0.45):]
+            flow = cv2.calcOpticalFlowFarneback(
+                roi_prev, roi_curr, None,
+                pyr_scale=0.5, levels=3, winsize=15,
+                iterations=3, poly_n=5, poly_sigma=1.2, flags=0)
+            mag = np.mean(np.sqrt(flow[..., 0]**2 + flow[..., 1]**2))
+            self.mag_history.append(mag)
+        else:
+            self.mag_history.append(0.0)
+
+        self.prev_gray = gray
+
+        if self.mag_history:
+            avg = sum(self.mag_history) / len(self.mag_history)
+            if avg >= FLOW_FAST:
+                band = "FAST"
+            elif avg >= FLOW_MODERATE:
+                band = "MODERATE"
+        return band
+
+#  Severity classifier 
 def classify_severity(depth_score, bbox, frame_shape):
     h, w = frame_shape[:2]
     x1, y1, x2, y2 = bbox
@@ -42,67 +128,86 @@ def classify_severity(depth_score, bbox, frame_shape):
         return "MEDIUM"
     return "LOW"
 
+# Drawing helpers 
 def draw_label_bg(frame, text, origin, font, scale, thickness, bg_color, padding=5):
     import cv2
     (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
     x, y = origin
-    cv2.rectangle(frame, (x - padding, y - th - padding),
-                  (x + tw + padding, y + baseline + padding), bg_color, -1)
+    cv2.rectangle(frame,
+                  (x - padding, y - th - padding),
+                  (x + tw + padding, y + baseline + padding),
+                  bg_color, -1)
     cv2.putText(frame, text, (x, y), font, scale,
                 (255, 255, 255), thickness, cv2.LINE_AA)
 
-def annotate_frame(frame, detections, frame_count, fps):
+#  Frame annotator 
+def annotate_frame(frame, detections, frame_count, fps, speed_band):
     import cv2
-    h, w = frame.shape[:2]
+    h, w   = frame.shape[:2]
     overall = "LOW"
-    font = cv2.FONT_HERSHEY_SIMPLEX
+    font    = cv2.FONT_HERSHEY_SIMPLEX
 
+    # Per-detection boxes
     for det in detections:
         x1, y1, x2, y2 = [int(v) for v in det["bbox"]]
         sev   = det["severity"]
-        color = ADVISORY[sev]["color"]
+        color = SEV_COLOR[sev]
         thick = 3 if sev == "HIGH" else 2
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thick)
-        draw_label_bg(frame, f"Pothole [{sev}]  {det['conf']:.2f}",
+        tid   = det.get("track_id", "?")
+        draw_label_bg(frame, f"#{tid} [{sev}]  {det['conf']:.2f}",
                       (x1, y1 - 6), font, 0.52, 1, color)
 
         dl = f"Depth: {det['depth_score']:.3f}"
         (dw, dh), _ = cv2.getTextSize(dl, font, 0.45, 1)
-        cv2.rectangle(frame, (x1, y2), (x1 + dw + 8, y2 + dh + 8), (30, 30, 30), -1)
+        cv2.rectangle(frame, (x1, y2), (x1 + dw + 8, y2 + dh + 8),
+                      (30, 30, 30), -1)
         cv2.putText(frame, dl, (x1 + 4, y2 + dh + 2),
                     font, 0.45, color, 1, cv2.LINE_AA)
 
         if SEVERITY_RANK[sev] > SEVERITY_RANK[overall]:
             overall = sev
 
-    adv = ADVISORY[overall]
+    # Worst-case depth score for dynamic recommendation
+    worst_depth = max((d["depth_score"] for d in detections), default=0.0)
+    rec_speed   = recommended_speed(overall, speed_band, worst_depth)
+    banner_msg  = advisory_message(overall, speed_band, rec_speed)
+    banner_col  = advisory_color(overall, speed_band)
+
+    #  Top banner 
     overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (w, 52), adv["color"], -1)
+    cv2.rectangle(overlay, (0, 0), (w, 52), banner_col, -1)
     cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
-    cv2.putText(frame, adv["msg"], (14, 36),
+    cv2.putText(frame, banner_msg, (14, 36),
                 font, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
 
+    #  Bottom bar 
     overlay2 = frame.copy()
     cv2.rectangle(overlay2, (0, h - 44), (w, h), (20, 20, 20), -1)
     cv2.addWeighted(overlay2, 0.8, frame, 0.2, 0, frame)
     cv2.line(frame, (0, h - 44), (w, h - 44), (80, 80, 80), 1)
 
+    # Left: pothole count
     cv2.putText(frame, f"Potholes: {len(detections)}", (14, h - 14),
-                font, 0.62, (255, 255, 255), 1, cv2.LINE_AA)
+                font, 0.58, (255, 255, 255), 1, cv2.LINE_AA)
 
+    # Centre: severity
     st = f"Severity: {overall}"
-    (sw, _), _ = cv2.getTextSize(st, font, 0.62, 1)
+    (sw, _), _ = cv2.getTextSize(st, font, 0.58, 1)
     cv2.putText(frame, st, (w // 2 - sw // 2, h - 14),
-                font, 0.62, adv["color"], 1, cv2.LINE_AA)
+                font, 0.58, SEV_COLOR[overall], 1, cv2.LINE_AA)
 
-    ts = f"Frame: {frame_count}  |  {fps:.1f} FPS"
-    (tw, _), _ = cv2.getTextSize(ts, font, 0.52, 1)
-    cv2.putText(frame, ts, (w - tw - 14, h - 14),
-                font, 0.52, (180, 180, 180), 1, cv2.LINE_AA)
+    # Right: vehicle speed band + frame info
+    spd_col  = SPEED_BAND_COLOR[speed_band]
+    spd_text = f"Vehicle: {speed_band}  |  Frame: {frame_count}"
+    (stw, _), _ = cv2.getTextSize(spd_text, font, 0.50, 1)
+    cv2.putText(frame, spd_text, (w - stw - 14, h - 14),
+                font, 0.50, spd_col, 1, cv2.LINE_AA)
 
-    return frame, overall
+    return frame, overall, rec_speed
 
+#  Main pipeline 
 def run_pipeline(video_path, log_fn, progress_fn, done_fn):
     import cv2
     try:
@@ -135,13 +240,16 @@ def run_pipeline(video_path, log_fn, progress_fn, done_fn):
                               vid_fps, (vid_w, vid_h))
 
         log_fn(f"Processing : {os.path.basename(video_path)}")
-        log_fn(f"Resolution : {vid_w}x{vid_h}  |  FPS: {vid_fps:.1f}  |  Frames: {total}")
+        log_fn(f"Resolution : {vid_w}x{vid_h}  |  FPS: {vid_fps:.1f}"
+               f"  |  Frames: {total}")
         log_fn(f"Output     : {out_name}")
         log_fn("─" * 52)
 
         frame_count     = 0
         total_potholes  = 0
         severity_counts = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
+        speed_estimator = SpeedEstimator(history=15)
+        track_history   = {}   # {track_id: deque of depth scores}
 
         while True:
             ret, frame = cap.read()
@@ -149,30 +257,58 @@ def run_pipeline(video_path, log_fn, progress_fn, done_fn):
                 break
 
             frame_count += 1
-            results    = yolo(frame, conf=CONFIDENCE, verbose=False)[0]
+
+            #  Vehicle speed estimation (every frame, cheap) 
+            speed_band = speed_estimator.update(frame)
+
+            #  Pothole detection + tracking 
+            results    = yolo.track(frame, conf=CONFIDENCE, augment=True, persist=True,
+                                    tracker="bytetrack.yaml", verbose=False)[0]
             detections = []
 
             if results.boxes is not None and len(results.boxes):
                 depth_map = estimate_depth(frame, depth_model, depth_transform)
+
                 for box in results.boxes:
-                    bbox  = box.xyxy[0].cpu().numpy()
-                    conf  = float(box.conf[0])
-                    ds    = get_depth_score(depth_map, bbox, frame.shape)
-                    sev   = classify_severity(ds, bbox, frame.shape)
-                    detections.append({"bbox": bbox, "conf": conf,
-                                       "depth_score": ds, "severity": sev})
+                    if box.id is None:
+                        continue
+                    track_id = int(box.id[0])
+                    bbox     = box.xyxy[0].cpu().numpy()
+                    conf     = float(box.conf[0])
+                    ds       = get_depth_score(depth_map, bbox, frame.shape)
+
+                    # Smooth depth score over last SMOOTH_WINDOW frames
+                    if track_id not in track_history:
+                        track_history[track_id] = deque(maxlen=SMOOTH_WINDOW)
+                    track_history[track_id].append(ds)
+                    smoothed_ds = (sum(track_history[track_id])
+                                   / len(track_history[track_id]))
+
+                    sev = classify_severity(smoothed_ds, bbox, frame.shape)
+                    detections.append({
+                        "bbox":        bbox,
+                        "conf":        conf,
+                        "depth_score": smoothed_ds,
+                        "severity":    sev,
+                        "track_id":    track_id,
+                    })
                     severity_counts[sev] += 1
+
                 total_potholes += len(detections)
 
-            annotated, _ = annotate_frame(frame, detections, frame_count, vid_fps)
+            annotated, _, rec_spd = annotate_frame(
+                frame, detections, frame_count, vid_fps, speed_band)
             out.write(annotated)
 
             pct = int((frame_count / total) * 100)
             progress_fn(pct)
 
             if frame_count % 60 == 0:
+                spd_str = f"{rec_spd} km/h" if rec_spd else "safe"
                 log_fn(f"  Frame {frame_count}/{total} ({pct}%)"
-                       f"  —  {len(detections)} pothole(s) this frame")
+                       f"  |  Vehicle: {speed_band}"
+                       f"  |  Advisory: {spd_str}"
+                       f"  |  {len(detections)} pothole(s)")
 
         cap.release()
         out.release()
@@ -247,16 +383,15 @@ class PitSenseApp:
         style.configure("Red.Horizontal.TProgressbar",
                         troughcolor=card, background=acc,
                         thickness=14, bordercolor=card)
-        self.progress = ttk.Progressbar(pf,
-                                        style="Red.Horizontal.TProgressbar",
-                                        orient="horizontal",
-                                        length=660, mode="determinate")
+        self.progress = ttk.Progressbar(
+            pf, style="Red.Horizontal.TProgressbar",
+            orient="horizontal", length=660, mode="determinate")
         self.progress.pack(fill="x", pady=(4, 0))
         self.pct_label = tk.Label(pf, text="0%",
                                   font=("Helvetica", 9), bg=bg, fg=sub)
         self.pct_label.pack(anchor="e")
 
-        # Buttons row — Run + Open Output Folder side by side
+        # Buttons row
         btn_row = tk.Frame(self.root, bg=bg)
         btn_row.pack(pady=(14, 0))
 
@@ -289,8 +424,10 @@ class PitSenseApp:
         self.log_box.pack(fill="both", expand=True, pady=(4, 0))
 
         # Footer
-        tk.Label(self.root, text="PitSense  •  Internship Project",
-                 font=("Helvetica", 8), bg=bg, fg="#3d405b").pack(pady=(6, 8))
+        tk.Label(self.root,
+                 text="PitSense  •  Internship Project",
+                 font=("Helvetica", 8), bg=bg,
+                 fg="#3d405b").pack(pady=(6, 8))
 
     def browse(self):
         path = filedialog.askopenfilename(
