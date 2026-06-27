@@ -12,7 +12,7 @@ import random
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# ── Paths ─────────────────────────────────────────────────────
+# Paths 
 BASE          = Path(r"C:\Projects\PitSense")
 ARCHIVE_IMG   = BASE / "archive" / "images"
 ARCHIVE_ANN   = BASE / "archive" / "annotations"
@@ -28,7 +28,7 @@ VALID_RATIO = 0.10
 
 random.seed(42)
 
-# ── Helper: Pascal VOC XML → YOLO txt ─────────────────────────
+#Helper: Pascal VOC XML → YOLO txt 
 def voc_to_yolo(xml_path: Path, out_txt: Path):
     """
     Converts a single Pascal VOC XML file to YOLO format.
@@ -85,7 +85,7 @@ def voc_to_yolo(xml_path: Path, out_txt: Path):
         print(f"  [WARN] Failed to parse {xml_path.name}: {e}")
         return False
 
-# ── Helper: copy image + label into split folder ───────────────
+# Helper: copy image + label into split folder 
 def copy_pair(img_src: Path, lbl_src: Path, split: str, prefix: str = ""):
     img_dst = OUT / split / "images" / f"{prefix}{img_src.name}"
     lbl_dst = OUT / split / "labels" / f"{prefix}{lbl_src.stem}.txt"
@@ -94,7 +94,7 @@ def copy_pair(img_src: Path, lbl_src: Path, split: str, prefix: str = ""):
     shutil.copy2(img_src, img_dst)
     shutil.copy2(lbl_src, lbl_dst)
 
-# ── Step 1: Convert + split archive dataset ───────────────────
+# Step 1: Convert + split archive dataset 
 print("=" * 60)
 print("Step 1 — Converting archive (VOC XML → YOLO)")
 print("=" * 60)
@@ -107,7 +107,7 @@ skipped = 0
 
 xml_files = sorted(ARCHIVE_ANN.glob("*.xml"))
 for xml_path in xml_files:
-    stem      = xml_path.stem                          # e.g. potholes0
+    stem      = xml_path.stem                          
     img_path  = ARCHIVE_IMG / f"{stem}.png"
     yolo_txt  = tmp_labels / f"{stem}.txt"
 
@@ -124,7 +124,7 @@ for xml_path in xml_files:
 print(f"  Converted : {len(archive_pairs)} images")
 print(f"  Skipped   : {skipped} (no valid boxes or missing image)")
 
-# Shuffle and split
+
 random.shuffle(archive_pairs)
 n        = len(archive_pairs)
 n_train  = int(n * TRAIN_RATIO)
@@ -146,7 +146,7 @@ for split, pairs in splits.items():
 
 print("  Done.")
 
-# ── Step 2: Copy BharatPothole dataset ────────────────────────
+#Step 2: Copy BharatPothole dataset
 print("\n" + "=" * 60)
 print("Step 2 — Copying BharatPothole dataset")
 print("=" * 60)
@@ -174,7 +174,7 @@ for split, src in [("train", BHARAT_TRAIN),
     n = copy_bharat_split(src, split)
     print(f"  {split:5s}: {n} images copied")
 
-# ── Step 3: Write data.yaml ───────────────────────────────────
+#Step 3: Write data.yaml
 print("\n" + "=" * 60)
 print("Step 3 — Writing data.yaml")
 print("=" * 60)
@@ -195,7 +195,7 @@ yaml_path = OUT / "data.yaml"
 yaml_path.write_text(yaml_content)
 print(f"  Saved to: {yaml_path}")
 
-# ── Step 4: Final summary ─────────────────────────────────────
+#Step 4: Final summary 
 print("\n" + "=" * 60)
 print("Final dataset summary")
 print("=" * 60)
