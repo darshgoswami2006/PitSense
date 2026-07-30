@@ -41,8 +41,8 @@ SEV_COLOR = {
     "LOW":    (0, 200, 0),
 }
 
-FLOW_FAST     = 2.0
-FLOW_MODERATE = 0.8
+FLOW_FAST     = 15.0
+FLOW_MODERATE = 3.0
 
 SPEED_BAND_COLOR = {
     "FAST":     (0, 0, 220),
@@ -51,7 +51,7 @@ SPEED_BAND_COLOR = {
 }
 
 SPEED_BAND_KMH = {
-    "FAST":     80,
+    "FAST":     90,
     "MODERATE": 45,
     "SLOW":     15,
 }
@@ -67,7 +67,7 @@ class OCRSpeedReader:
     """
     def __init__(self):
         self.reader     = None
-        self.last_speed = None   # cached km/h int
+        self.last_speed = None   
         self.ready      = False
 
         if OCR_AVAILABLE:
@@ -87,7 +87,7 @@ class OCRSpeedReader:
             return None
         try:
             h, w  = frame.shape[:2]
-            # Crop bottom 35% of frame — where dashcams burn overlays
+            # Crop bottom 35% of frame 
             roi   = frame[int(h * 0.65):, :]
             texts = self.reader.readtext(roi, detail=0)
             text  = " ".join(texts).lower().replace(" ", "")
@@ -115,7 +115,7 @@ class OCRSpeedReader:
     def kmh_to_band(self, kmh):
         if kmh is None:
             return None
-        if kmh >= 50:
+        if kmh >= 80:
             return "FAST"
         elif kmh >= 20:
             return "MODERATE"
