@@ -130,19 +130,6 @@ Urgency levels:
 
 ---
 
-## Vehicle Type Profiles
-
-The GUI lets you select your vehicle type before processing. Each profile has its own optical flow thresholds and speed band estimates:
-
-| Vehicle | FAST threshold | MODERATE threshold | Est. FAST speed |
-|---|---|---|---|
-| Bicycle | 0.6 | 0.25 | ~25 km/h |
-| Motorcycle | 1.2 | 0.5 | ~60 km/h |
-| Car / SUV | 2.0 | 0.8 | ~80 km/h |
-| Bus / Truck | 1.5 | 0.6 | ~60 km/h |
-
----
-
 ## Dataset
 
 Trained on a merged dataset combining two sources:
