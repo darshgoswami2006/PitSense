@@ -6,10 +6,8 @@ A computer vision system that detects potholes in road footage, estimates their 
 
 ## Demo
 
-![PitSense GUI](<img width="872" height="932" alt="image" src="https://github.com/user-attachments/assets/083b1072-399f-4c5f-996a-ad2b497e1214" />
-)
-![PitSense Output](<img width="1627" height="915" alt="image" src="https://github.com/user-attachments/assets/14595c29-eca2-4eb2-9874-f179828b9a7f" />
-)
+![PitSense GUI](<img width="872" height="932" alt="Screenshot 2026-08-07 081728" src="https://github.com/user-attachments/assets/b998ca2b-26bc-4848-97a2-fa15aecba3c1" />)
+![PitSense Output](<img width="1627" height="915" alt="Screenshot 2026-08-07 082234" src="https://github.com/user-attachments/assets/3f32ca11-4acd-4c46-8142-adc15f38fae2" />)
 
 ---
 
