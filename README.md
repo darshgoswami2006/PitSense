@@ -287,8 +287,8 @@ PitSense/
 - [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
 - [Intel MiDaS](https://github.com/isl-org/MiDaS)
 - [ByteTrack](https://github.com/ifzhang/ByteTrack)
-- [BharatPothole Dataset](https://universe.roboflow.com/yolo-ewrwa/dashcam-mg6en/dataset/14)
-- [Roboflow Public Pothole Dataset](https://public.roboflow.com/object-detection/pothole)
+- [BharatPothole Dataset](https://www.kaggle.com/datasets/surbhisaswatimohanty/bharatpothole)
+- [Pothole Detection Dataset](https://www.kaggle.com/datasets/andrewmvd/pothole-detection)
 
 ---
 
