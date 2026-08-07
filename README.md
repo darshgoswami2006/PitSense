@@ -212,11 +212,10 @@ runs/pothole_v3/weights/best.pt
 python app.py
 ```
 
-1. Select your **Vehicle Type** from the dropdown
-2. Click **Browse Video** or **Browse Image** to select your file
-3. Click **Run PitSense**
-4. Watch the processing log and progress bar
-5. Click **Open Output Folder** when done
+1. Click **Browse Video** or **Browse Image** to select your file
+2. Click **Run PitSense**
+3. Watch the processing log and progress bar
+4. Click **Open Output Folder** when done
 
 Output files are saved as:
 - Video: `videoname_pitsense_YYYYMMDD_HHMMSS.mp4`
