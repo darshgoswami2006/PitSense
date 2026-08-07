@@ -275,10 +275,11 @@ PitSense/
 
 ## Limitations
 
-- Depth estimation is **relative**, not absolute — the system cannot output precise centimetre measurements without camera calibration
-- Optical flow speed estimation is less reliable on open highways where there are few close objects in frame — OCR from GPS overlay is preferred when available
+- Depth estimation is **relative**, not absolute. The system cannot output precise centimetre measurements without camera calibration
+- Optical flow speed estimation is less reliable on open highways where there are few close objects in frame
+- Need to change Optic Flow variables depending on video quality
 - The model was trained primarily on Indian road footage and may generalise less well to other regions
-- Processing runs offline only — not real-time on live camera feeds
+- Processing runs offline only 
 
 ---
 
